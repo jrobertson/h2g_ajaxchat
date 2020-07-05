@@ -5,12 +5,13 @@
 # description: This gem makes it easier to build an AJAX chat project. 
 #              Designed for Rack-rscript.
 
+require 'erb'
 require 'simple-config'
 
 # This file includes the following classes
 #
 # * DummyRequest (used for testing)
-# * ChatCore
+# * ChatCore  (chat engine)
 # * DummyRws  (used for testing)
 # * WebPage
 # * Index      < WebPage
@@ -197,12 +198,14 @@ div p span {colour: #dde}
   end  
 
   def to_html()
-
+    
+    b = binding
+    
 @html ||= <<EOF
 <body onload="refresh()">
   <div id="wrapper">
 	  <div id="menu">
-		  <p class="welcome">Welcome, <b> #{@h[:username]} </b></p>
+		  <p class="welcome">Welcome, <b> <%= @h[:username] %> </b></p>
 		  <p class="logout"><a id="exit" href="logout">Exit Chat</a></p>
 		  <div style="clear:both"></div>
 	  </div>	
@@ -212,6 +215,7 @@ div p span {colour: #dde}
   </div>      
 EOF
 
+    ERB.new(@html).result(b)
   end
   
   def to_js()
@@ -395,6 +399,7 @@ class AjaxChat
   def login_post(username)
 
     @chat.login @rws.req, username
+    @h[:username] = username
     @rws.redirect 'index'
 
   end
@@ -426,7 +431,8 @@ class AjaxChat
     end
 
   end
-  
+
+  # user for debugging
   def messages()
     @chat.messages
   end  
@@ -438,6 +444,7 @@ class AjaxChat
     
   end
   
+  # user for debugging
   def users()
     @chat.users
   end

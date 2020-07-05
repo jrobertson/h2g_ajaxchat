@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'h2g_ajaxchat'
-  s.version = '0.2.0'
+  s.version = '0.3.0'
   s.summary = 'This gem makes it easier to build an AJAX chat project. ' + 
       'Designed for Rack-rscript'
   s.authors = ['James Robertson']
