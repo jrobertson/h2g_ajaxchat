@@ -5,6 +5,20 @@
 # description: This gem makes it easier to build an AJAX chat project. 
 #              Designed for Rack-rscript.
 
+require 'simple-config'
+
+# This file includes the following classes
+#
+# * DummyRequest (used for testing)
+# * ChatCore
+# * DummyRws  (used for testing)
+# * WebPage
+# * Index      < WebPage
+# * Login      < WebPage
+# * Logout     < WebPage
+# * LogoutPost < WebPage
+# * AjaxChat
+
 
 class DummyRequest
 
@@ -60,7 +74,6 @@ class ChatCore
     else
 
       return '' unless newmsg
-      puts '_messages: ' + @messages.inspect
       @messages.length - 1
     end
 
@@ -123,9 +136,11 @@ class DummyRws
 end
 
 class WebPage
+  
+  attr_accessor :css, :html, :js, :s
 
-  def initialize(h={})
-    @h = h
+  def initialize(name, h={} )
+    @h, @name = h, name
   end
 
   def to_css()
@@ -138,7 +153,7 @@ class WebPage
   end
 
   def to_s()
-    html_template()
+    @s = html_template()
   end
 
   protected
@@ -166,142 +181,24 @@ end
 
 
 
-class AjaxChat
-  
-  attr_reader :rws
 
-  def initialize(chatobj, rws=DummyRws.new(self), debug: false)
-    @chat, @rws, @debug = chatobj, rws, debug
+class Index < WebPage
+  
+  def initialize(h)
+    @name, @h = :index, h
   end
   
-  def chatter(newmsg=nil)
-    
-    id, users = @rws.req.session[:session_id].to_s, @chat.users
-
-    @chat.chatter(@rws.req, newmsg) do  |t, uid, username, msg|
-          
-      s2 = if id == uid then
-        "you: %s" % msg
-      else
-        "%s: %s" % [users[uid], msg]
-      end
-      
-      "<p><span id='time'>%s</span> %s</p>" % [t.strftime("%H:%M:%S"), s2]
-      
-    end        
-    
-    
-  end
-
-  def login()
-
-    wp = WebPage.new
-
-    def wp.to_html()
-'
-	<div id="loginform">
-	<form action="login" method="post">
-		<p>Please enter your name to continue:</p>
-		<label for="name">Name:</label>
-		<input type="text" name="name" id="name" autofocus="true"/>
-		<input type="submit" name="enter" id="enter" value="Enter" />
-	</form>
-	</div>
-'
-
-    end
-
-    def wp.to_s()
-      to_html()
-    end
-
-    return wp
-
-  end
-
-  def login_post(username)
-
-    @chat.login @rws.req, username
-    @rws.redirect 'index'
-
-  end
-  
-  def logout()
-
-    wp = WebPage.new
-
-    def wp.to_html()
-'
-	<div id="logoutform">
-	<form action="logout" method="post">
-		<p>Are you sure you want to logout?</p>
-		<input type="submit" name="enter" id="enter" value="Yes" />
-	</form>
-	<a href="index">no, return to the chat page</a>
-	</div>
-	'
-
-    end
-
-    def wp.to_s()
-      to_html()
-    end
-
-    return wp
-
-  end  
-  
-  def logout_post()
-
-    @chat.logout @rws.req
-            
-    wp = WebPage.new
-
-    def wp.to_s()
-      'You have successfully logged out'
-    end
-
-    return wp    
-
-  end  
-
-  def index()
-
-    @rws.req.session[:username] ? view_index() : login()
-
-  end
-  
-  def messages()
-    @chat.messages
-  end  
-  
-  def req(obj)
-    @rws.req = obj
-    self
-  end
-  
-  def users()
-    @chat.users
-  end
-
-  private
-
-  def view_index()
-
-    h = {username: @rws.req.session[:username]}
-
-    wp = WebPage.new h
-
-    def wp.to_css()
-'
+  def to_css()
+@css ||= '
 body {font-family: Arial;}
 #chatbox {overflow: scroll; height: 40%}
 div p span {colour: #dde}
 '
-    end
+  end  
 
-    def wp.to_html()
-<<EOF
+  def to_html()
+
+@html ||= <<EOF
 <body onload="refresh()">
   <div id="wrapper">
 	  <div id="menu">
@@ -313,12 +210,13 @@ div p span {colour: #dde}
     <input name="usermsg" type="text" id="usermsg" size="33" onkeyup='ajaxCall1(event.keyCode, this)' autofocus='true'/>
 
   </div>      
-
 EOF
-    end
 
-    def wp.to_js()
-<<EOF
+  end
+  
+  def to_js()
+    
+@js ||= <<EOF
   
 function updateScroll(){
     var element = document.getElementById("chatbox");
@@ -365,12 +263,194 @@ function ajaxCall2() {
 
 EOF
 
+    end  
+  
+end
 
+class Login < WebPage
+  
+  def initialize(h)
+    @name = :login
+  end
+
+  def to_html()
+
+    @html ||= '
+<div id="loginform">
+<form action="login" method="post">
+  <p>Please enter your name to continue:</p>
+  <label for="name">Name:</label>
+  <input type="text" name="name" id="name" autofocus="true"/>
+  <input type="submit" name="enter" id="enter" value="Enter" />
+</form>
+</div>
+'
+
+  end
+  
+end
+
+class Logout < WebPage
+  
+  def initialize(h)
+    @name = :logout
+  end
+
+  def to_html()
+
+    @html ||= '
+	<div id="logoutform">
+	<form action="logout" method="post">
+		<p>Are you sure you want to logout?</p>
+		<input type="submit" name="enter" id="enter" value="Yes" />
+	</form>
+	<a href="index">no, return to the chat page</a>
+	</div>
+	'
+
+  end
+  
+end
+
+class LogoutPost < WebPage
+  
+  def initialize(h)
+    @name = :logout_post
+  end
+
+  def to_s()
+
+    @s ||= 'You have successfully logged out'
+
+  end
+  
+end
+
+
+class AjaxChat
+  
+  attr_reader :rws
+
+  def initialize(chatobj, rws=DummyRws.new(self), config: nil, debug: false)
+    
+    @chat, @rws, @debug = chatobj, rws, debug    
+
+    plugins =  if config then
+    
+      SimpleConfig.new(config).to_h.map do |name, settings|
+        
+        settings = {} if settings.is_a? String
+              
+        pluginklass_name = 'AjaxChatPlugin' + name.to_s
+        
+        Kernel.const_get(pluginklass_name).new(settings)
+        
+      end  
+      
+    else
+      
+      []
+      
     end
+    
+    @h = {}
+    
+    @index, @login, @logout, @logout_post  = \
+        [Index, Login, Logout, LogoutPost].map do |klass|
+      
+      obj = klass.new @h
+      
+      plugins.each {|plugin| plugin.apply obj }
+      
+      obj
+      
+    end
+    
+  end
+  
+  def chatter(newmsg=nil)
+    
+    id, users = @rws.req.session[:session_id].to_s, @chat.users
 
-    return wp
+    @chat.chatter(@rws.req, newmsg) do  |t, uid, username, msg|
+          
+      s2 = if id == uid then
+        "you: %s" % msg
+      else
+        "%s: %s" % [users[uid], msg]
+      end
+      
+      "<p><span id='time'>%s</span> %s</p>" % [t.strftime("%H:%M:%S"), s2]
+      
+    end        
+        
+  end
+
+  def login()
+
+    view @login
 
   end
 
-end
+  def login_post(username)
 
+    @chat.login @rws.req, username
+    @rws.redirect 'index'
+
+  end
+  
+  def logout()
+
+    view @logout
+
+  end  
+  
+  def logout_post()
+
+    @chat.logout @rws.req            
+    view @logout_post 
+
+  end  
+
+  def index()
+
+    if @rws.req.session[:username] then
+      
+      @h[:username] = @rws.req.session[:username]
+      view @index
+      
+    else
+      
+      @rws.redirect 'login'
+      
+    end
+
+  end
+  
+  def messages()
+    @chat.messages
+  end  
+  
+  def req(obj)
+    
+    @rws.req = obj
+    self
+    
+  end
+  
+  def users()
+    @chat.users
+  end
+  
+  private
+  
+  def view(obj)
+    
+    if obj.to_s.length > 0 then
+      obj.to_s
+    else
+      obj
+    end
+  end
+
+end
