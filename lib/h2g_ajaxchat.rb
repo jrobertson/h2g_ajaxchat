@@ -109,13 +109,11 @@ class ChatCore
 
   protected
 
-  def append_message(msg)
-
-    u = @session[:username]
-    id = @session[:session_id].to_s
-    @users[id] = u.to_s
-    
-    @messages << [Time.now, id, u, msg]
+  def append_message(t=Time.now, id=@session[:session_id].to_s, 
+                     u=@session[:username], msg)
+        
+    @users[id] = u.to_s    
+    @messages << [t, id, u, msg]
 
   end
 
@@ -138,6 +136,7 @@ end
 
 class WebPage
   
+  attr_reader :name
   attr_accessor :css, :html, :js, :s
 
   def initialize(name, h={} )
@@ -153,8 +152,12 @@ class WebPage
   def to_js()
   end
 
+  def s()
+    @s ||= html_template()
+  end
+  
   def to_s()
-    @s = html_template()
+    @s
   end
 
   protected
@@ -189,17 +192,7 @@ class Index < WebPage
     @name, @h = :index, h
   end
   
-  def to_css()
-@css ||= '
-body {font-family: Arial;}
-#chatbox {overflow: scroll; height: 40%}
-div p span {colour: #dde}
-'
-  end  
-
-  def to_html()
-    
-    b = binding
+  def html()
     
 @html ||= <<EOF
 <body onload="refresh()">
@@ -215,10 +208,24 @@ div p span {colour: #dde}
   </div>      
 EOF
 
+  end
+  
+  def to_css()
+@css ||= '
+body {font-family: Arial;}
+#chatbox {overflow: scroll; height: 40%}
+div p span {colour: #dde}
+'
+  end  
+
+  def to_html()
+    
+    b = binding
+
     ERB.new(@html).result(b)
   end
   
-  def to_js()
+  def js()
     
 @js ||= <<EOF
   
@@ -267,7 +274,11 @@ function ajaxCall2() {
 
 EOF
 
-    end  
+  end  
+
+  def to_js()
+    @js
+  end
   
 end
 
@@ -277,7 +288,7 @@ class Login < WebPage
     @name = :login
   end
 
-  def to_html()
+  def html()
 
     @html ||= '
 <div id="loginform">
@@ -292,6 +303,10 @@ class Login < WebPage
 
   end
   
+  def to_html()
+    @html
+  end
+  
 end
 
 class Logout < WebPage
@@ -300,7 +315,7 @@ class Logout < WebPage
     @name = :logout
   end
 
-  def to_html()
+  def html()
 
     @html ||= '
 	<div id="logoutform">
@@ -314,6 +329,10 @@ class Logout < WebPage
 
   end
   
+  def to_html()
+    @html
+  end
+  
 end
 
 class LogoutPost < WebPage
@@ -322,10 +341,14 @@ class LogoutPost < WebPage
     @name = :logout_post
   end
 
-  def to_s()
+  def s()
 
     @s ||= 'You have successfully logged out'
 
+  end
+  
+  def to_s()
+    @s
   end
   
 end
@@ -333,7 +356,7 @@ end
 
 class AjaxChat
   
-  attr_reader :rws
+  attr_reader :rws, :views
 
   def initialize(chatobj, rws=DummyRws.new(self), config: nil, debug: false)
     
@@ -342,7 +365,7 @@ class AjaxChat
     plugins =  if config then
     
       SimpleConfig.new(config).to_h.map do |name, settings|
-        
+        puts 'name: ' + name.inspect if @debug
         settings = {} if settings.is_a? String
               
         pluginklass_name = 'AjaxChatPlugin' + name.to_s
@@ -362,21 +385,46 @@ class AjaxChat
     @index, @login, @logout, @logout_post  = \
         [Index, Login, Logout, LogoutPost].map do |klass|
       
-      obj = klass.new @h
-      
-      plugins.each {|plugin| plugin.apply obj }
-      
-      obj
+      klass.new @h
       
     end
+    
+    @views = {
+      index: @index,
+      login: @login,
+      logout: @logout,
+      logout_post: @logout_post
+    }
+    
+    plugins.each {|plugin| plugin.apply(self) if plugin.respond_to? :apply }
     
   end
   
   def chatter(newmsg=nil)
     
     id, users = @rws.req.session[:session_id].to_s, @chat.users
+    
+    chat = @chat
+    
+    # check for new messages to be added via the plugins
+    @plugins.each do |plugin|
+      
+      next unless plugin.respond_to? :messages
+      plugin.messages.each {|x| chat.append_message *x }
+      
+    end    
 
     @chat.chatter(@rws.req, newmsg) do  |t, uid, username, msg|
+            
+      @plugins.each do |plugin|
+        
+        plugin.messages.each do |x|
+          
+          x.on_newmesage(t, uid, username, msg) if x.respond_to? :on_newmessage
+          
+        end
+        
+      end   
           
       s2 = if id == uid then
         "you: %s" % msg
