@@ -24,12 +24,15 @@ require 'simple-config'
 
 class AjaxChatPlugin
 
-  def initialize(settings={})    
+  # ac = ajaxchat object
+  #
+  def initialize(ac, settings={}, debug: false)    
+    @ac, @settings, @debug = ac, settings, debug
   end
 
-  # Customises the ajax chat html etc; ac = ajaxchat object
+  # Customises the ajax chat html etc;
   #
-  def apply(ac)
+  def apply()
   end
 
   # messages from the plugin to be added to the chat timeline
@@ -40,7 +43,7 @@ class AjaxChatPlugin
   
   # messages from the chat timeline
   #
-  def on_newmessage(*a)
+  def on_newmessage(time, userid, username, msg)
   end
 end
 
@@ -130,7 +133,6 @@ class ChatCore
     
   end
 
-  protected
 
   def append_message(t=Time.now, id=@session[:session_id].to_s, 
                      u=@session[:username], msg)
@@ -144,16 +146,17 @@ end
 
 class DummyRws
   
-  attr_accessor :req
+  attr_accessor :req, :ac
+  attr_reader :rsc
 
-  def initialize(obj)
+  def initialize(ac=nil, rsc: nil)
 
-    @obj = obj
+    @ac, @rsc = ac, rsc
 
   end
 
   def redirect(s)
-    @obj.method(s.to_sym).call
+    @ac.method(s.to_sym).call
   end
 end
 
@@ -385,8 +388,8 @@ class AjaxChat
         next if settings[:disabled]
         pluginklass_name = 'AjaxChatPlugin' + name.to_s
         
-        #Kernel.const_get(pluginklass_name).new(settings)
-        eval("#{pluginklass_name}.new(#{settings})")
+        #Kernel.const_get(pluginklass_name).new(self, settings, debug: false)
+        eval("#{pluginklass_name}.new(self, #{settings}, debug: false)")
         
       end.compact  
       
@@ -412,7 +415,7 @@ class AjaxChat
       logout_post: @logout_post
     }
     
-    @plugins.each {|plugin| plugin.apply(self) if plugin.respond_to? :apply }
+    @plugins.each {|plugin| plugin.apply if plugin.respond_to? :apply }
     
   end
   
@@ -421,7 +424,7 @@ class AjaxChat
     id, users = @rws.req.session[:session_id].to_s, @chat.users
     
     chat = @chat
-    
+
     # check for new messages to be added via the plugins
     @plugins.each do |plugin|
       
@@ -429,12 +432,14 @@ class AjaxChat
       plugin.messages.each {|x| chat.append_message *x }
       
     end    
+    
+    plugins = @plugins
 
     @chat.chatter(@rws.req, newmsg) do  |t, uid, username, msg|
             
-      @plugins.each do |plugin|
+      plugins.each do |x|
                   
-        plugin.on_newmesage(t, uid, username, msg) if x.respond_to? :on_newmessage
+        x.on_newmessage(t, uid, username, msg) if x.respond_to? :on_newmessage
         
       end   
           
