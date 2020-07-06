@@ -10,6 +10,7 @@ require 'simple-config'
 
 # This file includes the following classes
 #
+# * AjaxChatPlugin Base class for plugins
 # * DummyRequest (used for testing)
 # * ChatCore  (chat engine)
 # * DummyRws  (used for testing)
@@ -18,8 +19,30 @@ require 'simple-config'
 # * Login      < WebPage
 # * Logout     < WebPage
 # * LogoutPost < WebPage
-# * AjaxChat
+# * AjaxChat (the main class)
 
+
+class AjaxChatPlugin
+
+  def initialize(settings={})    
+  end
+
+  # Customises the ajax chat html etc; ac = ajaxchat object
+  #
+  def apply(ac)
+  end
+
+  # messages from the plugin to be added to the chat timeline
+  #
+  def messages()
+    []
+  end
+  
+  # messages from the chat timeline
+  #
+  def on_newmessage(*a)
+  end
+end
 
 class DummyRequest
 
@@ -136,20 +159,23 @@ end
 
 class WebPage
   
-  attr_reader :name
   attr_accessor :css, :html, :js, :s
 
-  def initialize(name, h={} )
-    @h, @name = h, name
+  def initialize( h={} )
+    @h = h
   end
 
   def to_css()
   end
 
   def to_html()
+    b = binding
+
+    ERB.new(html()).result(b)    
   end
 
   def to_js()
+    js()
   end
 
   def s()
@@ -157,7 +183,7 @@ class WebPage
   end
   
   def to_s()
-    @s
+    s()
   end
 
   protected
@@ -189,7 +215,7 @@ end
 class Index < WebPage
   
   def initialize(h)
-    @name, @h = :index, h
+    @h = h
   end
   
   def html()
@@ -220,9 +246,7 @@ div p span {colour: #dde}
 
   def to_html()
     
-    b = binding
-
-    ERB.new(@html).result(b)
+    super()
   end
   
   def js()
@@ -276,16 +300,13 @@ EOF
 
   end  
 
-  def to_js()
-    @js
-  end
   
 end
 
 class Login < WebPage
   
-  def initialize(h)
-    @name = :login
+  def initialize(h={})
+
   end
 
   def html()
@@ -303,16 +324,13 @@ class Login < WebPage
 
   end
   
-  def to_html()
-    @html
-  end
   
 end
 
 class Logout < WebPage
   
-  def initialize(h)
-    @name = :logout
+  def initialize(h={})
+
   end
 
   def html()
@@ -329,16 +347,13 @@ class Logout < WebPage
 
   end
   
-  def to_html()
-    @html
-  end
   
 end
 
 class LogoutPost < WebPage
   
-  def initialize(h)
-    @name = :logout_post
+  def initialize(h={})
+
   end
 
   def s()
@@ -346,10 +361,7 @@ class LogoutPost < WebPage
     @s ||= 'You have successfully logged out'
 
   end
-  
-  def to_s()
-    @s
-  end
+
   
 end
 
@@ -358,21 +370,25 @@ class AjaxChat
   
   attr_reader :rws, :views
 
-  def initialize(chatobj, rws=DummyRws.new(self), config: nil, debug: false)
+  def initialize(chatobj=ChatCore.new, rws: DummyRws.new(self), config: nil, 
+                 debug: false)
     
     @chat, @rws, @debug = chatobj, rws, debug    
 
-    plugins =  if config then
+    @plugins =  if config then
     
       SimpleConfig.new(config).to_h.map do |name, settings|
+        
         puts 'name: ' + name.inspect if @debug
         settings = {} if settings.is_a? String
               
+        next if settings[:disabled]
         pluginklass_name = 'AjaxChatPlugin' + name.to_s
         
-        Kernel.const_get(pluginklass_name).new(settings)
+        #Kernel.const_get(pluginklass_name).new(settings)
+        eval("#{pluginklass_name}.new(#{settings})")
         
-      end  
+      end.compact  
       
     else
       
@@ -396,7 +412,7 @@ class AjaxChat
       logout_post: @logout_post
     }
     
-    plugins.each {|plugin| plugin.apply(self) if plugin.respond_to? :apply }
+    @plugins.each {|plugin| plugin.apply(self) if plugin.respond_to? :apply }
     
   end
   
@@ -417,12 +433,8 @@ class AjaxChat
     @chat.chatter(@rws.req, newmsg) do  |t, uid, username, msg|
             
       @plugins.each do |plugin|
-        
-        plugin.messages.each do |x|
-          
-          x.on_newmesage(t, uid, username, msg) if x.respond_to? :on_newmessage
-          
-        end
+                  
+        plugin.on_newmesage(t, uid, username, msg) if x.respond_to? :on_newmessage
         
       end   
           
@@ -480,7 +492,7 @@ class AjaxChat
 
   end
 
-  # user for debugging
+  # used for debugging
   def messages()
     @chat.messages
   end  
@@ -492,7 +504,7 @@ class AjaxChat
     
   end
   
-  # user for debugging
+  # used for debugging
   def users()
     @chat.users
   end
@@ -500,6 +512,8 @@ class AjaxChat
   private
   
   def view(obj)
+    
+    puts 'inside view obj: ' + obj.inspect if @debug
     
     if obj.to_s.length > 0 then
       obj.to_s
